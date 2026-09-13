@@ -1,0 +1,74 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["minimal-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows-x86_64
+            runner: ubuntu-24.04
+          - target: macos-arm64
+            runner: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install build tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64 libz-mingw-w64-dev nasm pkg-config make zip unzip xz-utils
+
+      - name: Install build tools
+        if: runner.os == 'macOS'
+        run: brew install pkgconf
+
+      - name: Build
+        run: bash ./build.sh ${{ matrix.target }}
+
+      - name: Check
+        run: bash ./check.sh ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ffmpeg-${{ matrix.target }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Draft release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/minimal-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach sources and checksums
+        run: bash ./release.sh
+
+      # A draft, never a published release: releases are immutable once
+      # published, so a person checks the archives first.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" \
+            --notes-file dist/RELEASE_NOTES.md \
+            dist/*.zip dist/*.tar.* dist/SHA256SUMS
