@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Builds a minimal, LGPL-only FFmpeg -- ffmpeg and ffprobe -- for one target.
+# Builds FFmpeg for NTranscript under the LGPL: ffmpeg, ffprobe and the shared
+# libraries they run on, for one target.
 #
 #   ./build.sh windows-x86_64   # on Linux, cross-compiled with mingw-w64
 #   ./build.sh macos-arm64      # on an Apple Silicon Mac
 #
 # The result is dist/ffmpeg-<version>-ntr<revision>-<target>.zip: both
-# programs, the licences, and a BUILDINFO.txt recording exactly what went in.
+# programs with their libraries beside them, the licences, and a BUILDINFO.txt
+# recording exactly what went in.
 set -euo pipefail
 
 TARGET="${1:?usage: build.sh windows-x86_64|macos-arm64}"
@@ -29,16 +31,16 @@ sha256() {
   fi
 }
 
-# Downloads a source tarball once and refuses it unless it is byte for byte
-# the one pinned in versions.env. Prints the path.
+# Downloads a source tarball once, under the name given, and refuses it unless
+# it is byte for byte the one pinned in versions.env. Prints the path.
 fetch() {
-  local url="$1" expected="$2"
-  local file="$SOURCES/$(basename "$url")"
+  local url="$1" expected="$2" name="$3"
+  local file="$SOURCES/$name"
   [ -f "$file" ] || curl -fsSL --retry 3 -o "$file" "$url"
   local actual
   actual="$(sha256 "$file")"
   if [ "$actual" != "$expected" ]; then
-    echo "checksum mismatch for $(basename "$file"): expected $expected, got $actual" >&2
+    echo "checksum mismatch for $name: expected $expected, got $actual" >&2
     rm -f "$file"
     exit 1
   fi
@@ -60,11 +62,15 @@ case "$TARGET" in
     HOST=x86_64-w64-mingw32
     AUTOTOOLS_HOST=(--host="$HOST")
     LIB_CFLAGS="-O2"
+    VPX_TARGET=x86_64-win64-gcc
+    VPX_EXTRA=(--as=nasm)
     FFMPEG_TARGET=(--enable-cross-compile --target-os=mingw32 --arch=x86_64 --cross-prefix="$HOST-" --pkg-config=pkg-config --enable-w32threads)
-    # Everything static, libgcc included, so the programs need nothing beside
-    # them but Windows itself.
-    FFMPEG_LDFLAGS="-static -static-libgcc"
-    EXE=.exe
+    # libgcc linked in, so the libraries need nothing beside them but Windows.
+    FFMPEG_LDFLAGS="-static-libgcc"
+    # Media Foundation's H.264 and HEVC encoders are left for the converter:
+    # linked plainly, a missing mfplat.dll -- Windows "N" editions -- stops
+    # every FFmpeg library from loading, not just those encoders.
+    PLATFORM_FLAGS=()
     ;;
   macos-arm64)
     if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
@@ -77,9 +83,14 @@ case "$TARGET" in
     # No newer than NTranscript's own minimum (14.2): a tool that needs a newer
     # macOS than the app it serves would fail on machines the app supports.
     export MACOSX_DEPLOYMENT_TARGET=14.0
-    FFMPEG_TARGET=(--arch=arm64 --target-os=darwin --cc=clang --enable-pthreads)
-    FFMPEG_LDFLAGS=""
-    EXE=""
+    VPX_TARGET=arm64-darwin23-gcc
+    VPX_EXTRA=()
+    # Libraries are named through @rpath, and the programs look for them in
+    # their own folder -- so the archive works wherever it is unpacked.
+    FFMPEG_TARGET=(--arch=arm64 --target-os=darwin --cc=clang --enable-pthreads --install-name-dir=@rpath)
+    FFMPEG_LDFLAGS="-Wl,-rpath,@executable_path"
+    # Apple's H.264 and HEVC encoders, in hardware on every Apple Silicon Mac.
+    PLATFORM_FLAGS=(--enable-videotoolbox)
     ;;
   *)
     echo "unknown target: $TARGET" >&2
@@ -93,7 +104,7 @@ export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 unset PKG_CONFIG_PATH
 
 echo "::group::LAME $LAME_VERSION"
-lame_tarball="$(fetch "$LAME_URL" "$LAME_SHA256")"
+lame_tarball="$(fetch "$LAME_URL" "$LAME_SHA256" "$LAME_FILE")"
 lame_src="$(unpack "$lame_tarball" lame)"
 (
   cd "$lame_src"
@@ -109,7 +120,7 @@ lame_src="$(unpack "$lame_tarball" lame)"
 echo "::endgroup::"
 
 echo "::group::Opus $OPUS_VERSION"
-opus_tarball="$(fetch "$OPUS_URL" "$OPUS_SHA256")"
+opus_tarball="$(fetch "$OPUS_URL" "$OPUS_SHA256" "$OPUS_FILE")"
 opus_src="$(unpack "$opus_tarball" opus)"
 (
   cd "$opus_src"
@@ -125,11 +136,38 @@ opus_src="$(unpack "$opus_tarball" opus)"
 )
 echo "::endgroup::"
 
-# What sites serve, and what the few conversions NTranscript offers need.
-AUDIO_DECODERS="aac,aac_latm,ac3,alac,dca,eac3,flac,mp1,mp2,mp3,mp3float,opus,pcm_alaw,pcm_f32le,pcm_mulaw,pcm_s16be,pcm_s16le,pcm_s24le,pcm_s32le,pcm_u8,truehd,vorbis,wmav1,wmav2"
-ENCODERS="aac,libmp3lame,libopus,pcm_s16le"
-# The ones format conversion inserts on its own, plus trimming.
-FILTERS="abuffer,abuffersink,aformat,anull,aresample,asetnsamples,atrim,buffer,buffersink,format,null,trim"
+echo "::group::dav1d $DAV1D_VERSION"
+dav1d_tarball="$(fetch "$DAV1D_URL" "$DAV1D_SHA256" "$DAV1D_FILE")"
+dav1d_src="$(unpack "$dav1d_tarball" dav1d)"
+dav1d_cross=()
+if [ "$TARGET" = windows-x86_64 ]; then
+  dav1d_cross=(--cross-file "$dav1d_src/package/crossfiles/x86_64-w64-mingw32.meson")
+fi
+rm -rf "$WORK/build/dav1d"
+meson setup "$WORK/build/dav1d" "$dav1d_src" ${dav1d_cross[@]+"${dav1d_cross[@]}"} \
+  --prefix="$PREFIX" --libdir=lib --buildtype=release --default-library=static \
+  -Denable_tools=false -Denable_tests=false
+ninja -C "$WORK/build/dav1d" install
+echo "::endgroup::"
+
+echo "::group::libvpx $VPX_VERSION"
+vpx_tarball="$(fetch "$VPX_URL" "$VPX_SHA256" "$VPX_FILE")"
+vpx_src="$(unpack "$vpx_tarball" libvpx)"
+rm -rf "$WORK/build/libvpx"
+mkdir -p "$WORK/build/libvpx"
+(
+  cd "$WORK/build/libvpx"
+  if [ "$TARGET" = windows-x86_64 ]; then
+    export CROSS="$HOST-"
+  fi
+  "$vpx_src/configure" --target="$VPX_TARGET" --prefix="$PREFIX" \
+    --enable-static --disable-shared --enable-pic \
+    --disable-examples --disable-tools --disable-docs --disable-unit-tests \
+    --enable-vp9-highbitdepth ${VPX_EXTRA[@]+"${VPX_EXTRA[@]}"}
+  make -j"$JOBS"
+  make install
+)
+echo "::endgroup::"
 
 FFMPEG_FLAGS=(
   --prefix="$WORK/ffmpeg-install"
@@ -137,32 +175,38 @@ FFMPEG_FLAGS=(
   --pkg-config-flags=--static
   --extra-cflags="-I$PREFIX/include"
   --extra-ldflags="-L$PREFIX/lib $FFMPEG_LDFLAGS"
-  --enable-static
-  --disable-shared
+  # Shared, so ffmpeg and ffprobe share one copy of the codecs instead of
+  # carrying one each.
+  --enable-shared
+  --disable-static
   --disable-autodetect
   --disable-everything
   --disable-network
   --disable-doc
   --disable-ffplay
   --disable-avdevice
-  --disable-swscale
   --disable-debug
   --enable-zlib
+  --enable-libdav1d
   --enable-libmp3lame
   --enable-libopus
+  --enable-libvpx
+  # Everything FFmpeg itself provides. Components that need the GPL or a
+  # library not built here drop out on their own, which keeps this LGPL.
+  --enable-decoders
+  --enable-encoders
   --enable-demuxers
   --enable-muxers
   --enable-parsers
   --enable-bsfs
+  --enable-filters
   --enable-protocol=file,pipe
-  --enable-decoder="$AUDIO_DECODERS"
-  --enable-encoder="$ENCODERS"
-  --enable-filter="$FILTERS"
   "${FFMPEG_TARGET[@]}"
+  ${PLATFORM_FLAGS[@]+"${PLATFORM_FLAGS[@]}"}
 )
 
 echo "::group::FFmpeg $FFMPEG_VERSION"
-ffmpeg_tarball="$(fetch "$FFMPEG_URL" "$FFMPEG_SHA256")"
+ffmpeg_tarball="$(fetch "$FFMPEG_URL" "$FFMPEG_SHA256" "$FFMPEG_FILE")"
 ffmpeg_src="$(unpack "$ffmpeg_tarball" ffmpeg)"
 (
   cd "$ffmpeg_src"
@@ -176,41 +220,54 @@ ffmpeg_src="$(unpack "$ffmpeg_tarball" ffmpeg)"
 echo "::endgroup::"
 
 echo "::group::Package"
-BIN="$WORK/ffmpeg-install/bin"
-for program in ffmpeg ffprobe; do
-  if [ ! -f "$BIN/$program$EXE" ]; then
-    echo "$program$EXE was not built" >&2
-    exit 1
-  fi
-done
-
+INSTALL="$WORK/ffmpeg-install"
 STAGE="$WORK/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-cp "$BIN/ffmpeg$EXE" "$BIN/ffprobe$EXE" "$STAGE/"
+
+case "$TARGET" in
+  windows-x86_64)
+    for program in ffmpeg.exe ffprobe.exe; do
+      [ -f "$INSTALL/bin/$program" ] || { echo "$program was not built" >&2; exit 1; }
+    done
+    cp "$INSTALL/bin/ffmpeg.exe" "$INSTALL/bin/ffprobe.exe" "$INSTALL"/bin/*.dll "$STAGE/"
+    ;;
+  macos-arm64)
+    for program in ffmpeg ffprobe; do
+      [ -f "$INSTALL/bin/$program" ] || { echo "$program was not built" >&2; exit 1; }
+    done
+    cp "$INSTALL/bin/ffmpeg" "$INSTALL/bin/ffprobe" "$STAGE/"
+    # Exactly the libraries the programs ask for, under the names they ask
+    # for them by, as real files rather than symlinks.
+    for name in $(otool -L "$STAGE/ffmpeg" "$STAGE/ffprobe" | awk '$1 ~ /^@rpath\// { sub("@rpath/", "", $1); print $1 }' | sort -u); do
+      cp -L "$INSTALL/lib/$name" "$STAGE/$name"
+    done
+    codesign --force --sign - "$STAGE/ffmpeg" "$STAGE/ffprobe" "$STAGE"/*.dylib
+    ;;
+esac
+
 cp "$ffmpeg_src/COPYING.LGPLv2.1" "$STAGE/LICENSE-FFmpeg.txt"
 cp "$lame_src/COPYING" "$STAGE/LICENSE-LAME.txt"
 cp "$opus_src/COPYING" "$STAGE/LICENSE-Opus.txt"
-if [ "$TARGET" = macos-arm64 ]; then
-  codesign --force --sign - "$STAGE/ffmpeg" "$STAGE/ffprobe"
-fi
+cp "$dav1d_src/COPYING" "$STAGE/LICENSE-dav1d.txt"
+cat "$vpx_src/LICENSE" "$vpx_src/PATENTS" > "$STAGE/LICENSE-libvpx.txt"
 
 {
   echo "FFmpeg $FFMPEG_VERSION-ntr$BUILD_REVISION for $TARGET"
   echo "Built by https://github.com/Nothing-Software/FFmpeg-Builds${GITHUB_SHA:+ at commit $GITHUB_SHA}"
   echo
   echo "Sources:"
-  echo "  $FFMPEG_URL"
-  echo "    sha256 $FFMPEG_SHA256"
-  echo "  $LAME_URL"
-  echo "    sha256 $LAME_SHA256"
-  echo "  $OPUS_URL"
-  echo "    sha256 $OPUS_SHA256"
+  for source in FFMPEG LAME OPUS DAV1D VPX; do
+    url_var="${source}_URL"
+    sha_var="${source}_SHA256"
+    echo "  ${!url_var}"
+    echo "    sha256 ${!sha_var}"
+  done
   echo
   echo "FFmpeg configure flags:"
   printf '  %s\n' "${FFMPEG_FLAGS[@]}"
   echo
-  echo "Licences: LGPL-2.1-or-later (FFmpeg, LAME), BSD-3-Clause (Opus)."
+  echo "Licences: LGPL-2.1-or-later (FFmpeg, LAME), BSD (Opus, dav1d, libvpx)."
   echo "The exact sources are attached to the release this archive belongs to."
 } > "$STAGE/BUILDINFO.txt"
 
