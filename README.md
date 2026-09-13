@@ -22,7 +22,7 @@ The archives are LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx u
 ## Building
 
 ```bash
-./build.sh windows-x86_64   # on Linux, with mingw-w64, libz-mingw-w64-dev, nasm, pkg-config, meson, ninja, zip
+./build.sh windows-x86_64   # on Linux, with mingw-w64, nasm, pkg-config, meson, ninja, zip
 ./build.sh macos-arm64      # on an Apple Silicon Mac, with the Xcode tools, pkgconf, meson and ninja
 ./check.sh <target>         # linkage and licence; on macOS also real encodes, decodes and a transcode
 ```

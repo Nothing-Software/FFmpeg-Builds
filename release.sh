@@ -9,7 +9,7 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 source "$ROOT/versions.env"
 cd "$ROOT/dist"
 
-for source in FFMPEG LAME OPUS DAV1D VPX; do
+for source in FFMPEG LAME OPUS DAV1D VPX ZLIB; do
   url_var="${source}_URL"
   sha_var="${source}_SHA256"
   file_var="${source}_FILE"

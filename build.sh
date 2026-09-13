@@ -103,6 +103,23 @@ esac
 export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 unset PKG_CONFIG_PATH
 
+if [ "$TARGET" = windows-x86_64 ]; then
+  echo "::group::zlib $ZLIB_VERSION"
+  zlib_tarball="$(fetch "$ZLIB_URL" "$ZLIB_SHA256" "$ZLIB_FILE")"
+  zlib_src="$(unpack "$zlib_tarball" zlib)"
+  (
+    cd "$zlib_src"
+    # Built here rather than taken from the distribution: its mingw package
+    # hands the linker an import library first, and shared FFmpeg libraries
+    # then need a zlib1.dll that nothing ships. macOS has zlib itself.
+    make -f win32/Makefile.gcc PREFIX="$HOST-" CFLAGS="$LIB_CFLAGS" -j"$JOBS" libz.a
+    install -d "$PREFIX/include" "$PREFIX/lib"
+    install -m 644 zlib.h zconf.h "$PREFIX/include/"
+    install -m 644 libz.a "$PREFIX/lib/"
+  )
+  echo "::endgroup::"
+fi
+
 echo "::group::LAME $LAME_VERSION"
 lame_tarball="$(fetch "$LAME_URL" "$LAME_SHA256" "$LAME_FILE")"
 lame_src="$(unpack "$lame_tarball" lame)"
@@ -251,13 +268,18 @@ cp "$lame_src/COPYING" "$STAGE/LICENSE-LAME.txt"
 cp "$opus_src/COPYING" "$STAGE/LICENSE-Opus.txt"
 cp "$dav1d_src/COPYING" "$STAGE/LICENSE-dav1d.txt"
 cat "$vpx_src/LICENSE" "$vpx_src/PATENTS" > "$STAGE/LICENSE-libvpx.txt"
+sources=(FFMPEG LAME OPUS DAV1D VPX)
+if [ "$TARGET" = windows-x86_64 ]; then
+  cp "$zlib_src/LICENSE" "$STAGE/LICENSE-zlib.txt"
+  sources+=(ZLIB)
+fi
 
 {
   echo "FFmpeg $FFMPEG_VERSION-ntr$BUILD_REVISION for $TARGET"
   echo "Built by https://github.com/Nothing-Software/FFmpeg-Builds${GITHUB_SHA:+ at commit $GITHUB_SHA}"
   echo
   echo "Sources:"
-  for source in FFMPEG LAME OPUS DAV1D VPX; do
+  for source in "${sources[@]}"; do
     url_var="${source}_URL"
     sha_var="${source}_SHA256"
     echo "  ${!url_var}"
