@@ -67,9 +67,11 @@ case "$TARGET" in
     cd "$CHECK"
     version="$(./ffmpeg -hide_banner -version)"
     echo "${version%%$'\n'*}"
-    # FFmpeg prints its licence through its log, on stderr.
+    # FFmpeg prints its licence through its log, on stderr, wrapped mid-phrase
+    # ("GNU Lesser General Public" / "License"), so only a part that stays on
+    # one line is searched for.
     licence="$(./ffmpeg -hide_banner -L 2>&1)"
-    grep -q 'GNU Lesser General Public License' <<< "$licence" || fail "the build is not LGPL"
+    grep -q 'Lesser General Public' <<< "$licence" || fail "the build is not LGPL"
 
     encoders="$(./ffmpeg -hide_banner -encoders 2>/dev/null)"
     for encoder in libvpx-vp9 libvpx aac libmp3lame libopus flac mpeg4 h264_videotoolbox hevc_videotoolbox; do

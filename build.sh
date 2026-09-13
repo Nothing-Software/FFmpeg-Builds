@@ -120,6 +120,19 @@ if [ "$TARGET" = windows-x86_64 ]; then
   echo "::endgroup::"
 fi
 
+if [ "$TARGET" = windows-x86_64 ]; then
+  # libvpx threads through winpthreads, and the toolchain offers the linker
+  # winpthreads' import library before its static one -- avcodec then needs a
+  # libwinpthread-1.dll that nothing ships. Copies of the static archives,
+  # where the build looks first, are linked in instead.
+  for archive in libwinpthread.a libpthread.a; do
+    found="$("$HOST-gcc" -print-file-name="$archive")"
+    if [ "$found" != "$archive" ] && [ -f "$found" ]; then
+      install -m 644 "$found" "$PREFIX/lib/$archive"
+    fi
+  done
+fi
+
 echo "::group::LAME $LAME_VERSION"
 lame_tarball="$(fetch "$LAME_URL" "$LAME_SHA256" "$LAME_FILE")"
 lame_src="$(unpack "$lame_tarball" lame)"
