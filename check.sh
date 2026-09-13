@@ -36,6 +36,16 @@ note_problem() {
   problems="$problems  $1: $2"$'\n'
 }
 
+# Every licence the archive has to carry beside what it covers.
+licences=(LICENSE-FFmpeg.txt LICENSE-LAME.txt LICENSE-Opus.txt LICENSE-dav1d.txt LICENSE-libvpx.txt)
+if [ "$TARGET" = windows-x86_64 ]; then
+  licences+=(LICENSE-zlib.txt LICENSE-mingw-w64-runtime.txt LICENSE-winpthreads.txt)
+fi
+for licence in "${licences[@]}"; do
+  [ -s "$CHECK/$licence" ] || note_problem "$licence" "not in the archive"
+done
+[ -z "$problems" ] || fail "licences missing:"$'\n'"$problems"
+
 case "$TARGET" in
   windows-x86_64)
     own='(avcodec|avformat|avfilter|avutil|swresample|swscale)-[0-9]+\.dll'

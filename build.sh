@@ -104,6 +104,23 @@ export PKG_CONFIG_LIBDIR="$PREFIX/lib/pkgconfig"
 unset PKG_CONFIG_PATH
 
 if [ "$TARGET" = windows-x86_64 ]; then
+  # The MinGW-w64 runtime and winpthreads end up inside the files, and parts
+  # of both ask for their notices to travel with the binaries. Those notices
+  # are kept in licences/ per mingw-w64 version; a toolchain without a copy
+  # stops the build here rather than ship notices that may not match it.
+  winpthread="$(realpath "$("$HOST-gcc" -print-file-name=libwinpthread.a)")"
+  mingw_package="$(dpkg-query -S "$winpthread" | cut -d: -f1)"
+  MINGW_VERSION="$(dpkg-query -W -f='${Version}' "$mingw_package")"
+  MINGW_VERSION="${MINGW_VERSION#*:}"
+  MINGW_VERSION="${MINGW_VERSION%%[-+~]*}"
+  MINGW_NOTICES="$ROOT/licences/mingw-w64-$MINGW_VERSION"
+  if [ ! -f "$MINGW_NOTICES/COPYING.MinGW-w64-runtime.txt" ] || [ ! -f "$MINGW_NOTICES/COPYING.winpthreads.txt" ]; then
+    echo "no notices kept for mingw-w64 $MINGW_VERSION: add them under $MINGW_NOTICES" >&2
+    exit 1
+  fi
+fi
+
+if [ "$TARGET" = windows-x86_64 ]; then
   echo "::group::zlib $ZLIB_VERSION"
   zlib_tarball="$(fetch "$ZLIB_URL" "$ZLIB_SHA256" "$ZLIB_FILE")"
   zlib_src="$(unpack "$zlib_tarball" zlib)"
@@ -284,12 +301,20 @@ cat "$vpx_src/LICENSE" "$vpx_src/PATENTS" > "$STAGE/LICENSE-libvpx.txt"
 sources=(FFMPEG LAME OPUS DAV1D VPX)
 if [ "$TARGET" = windows-x86_64 ]; then
   cp "$zlib_src/LICENSE" "$STAGE/LICENSE-zlib.txt"
+  cp "$MINGW_NOTICES/COPYING.MinGW-w64-runtime.txt" "$STAGE/LICENSE-mingw-w64-runtime.txt"
+  cp "$MINGW_NOTICES/COPYING.winpthreads.txt" "$STAGE/LICENSE-winpthreads.txt"
   sources+=(ZLIB)
+  compiler="$("$HOST-gcc" --version)"
+  toolchain="${compiler%%$'\n'*}, mingw-w64 $MINGW_VERSION"
+else
+  compiler="$(clang --version)"
+  toolchain="${compiler%%$'\n'*}"
 fi
 
 {
   echo "FFmpeg $FFMPEG_VERSION-ntr$BUILD_REVISION for $TARGET"
   echo "Built by https://github.com/Nothing-Software/FFmpeg-Builds${GITHUB_SHA:+ at commit $GITHUB_SHA}"
+  echo "Toolchain: $toolchain"
   echo
   echo "Sources:"
   for source in "${sources[@]}"; do

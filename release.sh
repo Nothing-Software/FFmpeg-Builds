@@ -27,7 +27,7 @@ FFmpeg $FFMPEG_VERSION for NTranscript: \`ffmpeg\`, \`ffprobe\` and the shared l
 - Every demuxer, muxer, parser, bitstream filter and filter, with scaling.
 - Not included: anything under the GPL (so no x264 or x265), network protocols, capture devices.
 
-Licensed LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx under BSD licences. The source tarballs these archives were built from are attached, and \`BUILDINFO.txt\` inside each archive lists their checksums and FFmpeg's configure flags.
+Licensed LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx under BSD licences. The Windows archive also links in zlib, the MinGW-w64 runtime and winpthreads, and carries their notices too. The source tarballs these archives were built from are attached, and \`BUILDINFO.txt\` inside each archive lists their checksums, the toolchain, and FFmpeg's configure flags.
 EOF
 
 cat SHA256SUMS

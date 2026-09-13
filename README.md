@@ -17,7 +17,7 @@ The programs share one copy of the libraries rather than carrying one each, whic
 
 ## Licence
 
-The archives are LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx under BSD licences; each archive includes every licence. Every release carries the exact source tarballs its archives were built from, and every archive holds a `BUILDINFO.txt` with those sources' checksums and FFmpeg's full configure flags, so any build can be reproduced and compared. The scripts in this repository are under the same LGPL-2.1-or-later; see `LICENSE`.
+The archives are LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx under BSD licences; each archive includes every licence. The Windows files also link in zlib, the MinGW-w64 runtime and winpthreads, and parts of the last two ask for their notices to travel with the binaries: those notices are kept in `licences/` under the toolchain version they belong to, and a build on any other version stops rather than ship notices that may not match. Every release carries the exact source tarballs its archives were built from, and every archive holds a `BUILDINFO.txt` with those sources' checksums and FFmpeg's full configure flags, so any build can be reproduced and compared. The scripts in this repository are under the same LGPL-2.1-or-later; see `LICENSE`.
 
 ## Building
 
