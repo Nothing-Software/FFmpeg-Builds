@@ -72,8 +72,10 @@ case "$TARGET" in
     # everywhere else. FFmpeg opens mfplat.dll when one of these encoders is
     # opened rather than linking it, so a Windows "N" edition without the
     # Media Feature Pack loses these encoders and nothing else -- check.sh
-    # fails any build that links it after all.
-    PLATFORM_FLAGS=(--enable-mediafoundation)
+    # fails any build that links it after all. The encoder is written to
+    # take frames from the graphics card as well, and does not build without
+    # Direct3D 11, whose libraries FFmpeg opens the same way.
+    PLATFORM_FLAGS=(--enable-mediafoundation --enable-d3d11va)
     ;;
   macos-arm64)
     if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
