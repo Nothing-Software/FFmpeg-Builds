@@ -67,10 +67,13 @@ case "$TARGET" in
     FFMPEG_TARGET=(--enable-cross-compile --target-os=mingw32 --arch=x86_64 --cross-prefix="$HOST-" --pkg-config=pkg-config --enable-w32threads)
     # libgcc linked in, so the libraries need nothing beside them but Windows.
     FFMPEG_LDFLAGS="-static-libgcc"
-    # Media Foundation's H.264 and HEVC encoders are left for the converter:
-    # linked plainly, a missing mfplat.dll -- Windows "N" editions -- stops
-    # every FFmpeg library from loading, not just those encoders.
-    PLATFORM_FLAGS=()
+    # H.264 and HEVC through Media Foundation, the encoders Windows carries
+    # itself: on the graphics card where its driver offers one, in software
+    # everywhere else. FFmpeg opens mfplat.dll when one of these encoders is
+    # opened rather than linking it, so a Windows "N" edition without the
+    # Media Feature Pack loses these encoders and nothing else -- check.sh
+    # fails any build that links it after all.
+    PLATFORM_FLAGS=(--enable-mediafoundation)
     ;;
   macos-arm64)
     if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then

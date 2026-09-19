@@ -7,11 +7,14 @@ NTranscript downloads a build on demand. It uses FFmpeg to get the sound out of 
 ## What is in a build
 
 - Every decoder FFmpeg has, plus [dav1d](https://code.videolan.org/videolan/dav1d) for AV1.
-- Every encoder FFmpeg has, plus MP3 ([LAME](https://lame.sourceforge.io/)), [Opus](https://opus-codec.org/) and VP8/VP9 ([libvpx](https://chromium.googlesource.com/webm/libvpx)). On macOS, also H.264 and HEVC through VideoToolbox, in hardware.
+- Every encoder FFmpeg has, plus MP3 ([LAME](https://lame.sourceforge.io/)), [Opus](https://opus-codec.org/) and VP8/VP9 ([libvpx](https://chromium.googlesource.com/webm/libvpx)).
+- H.264 and HEVC through the encoders each system carries itself: VideoToolbox on macOS, in hardware on every Apple Silicon Mac, and Media Foundation on Windows, on the graphics card where its driver offers an encoder and in software everywhere else.
 - Every demuxer, muxer, parser, bitstream filter and filter, and scaling.
 - The `file` and `pipe` protocols.
 
-Not included: anything under the GPL — which rules out x264 and x265 — network protocols, and capture devices. On Windows, H.264 and HEVC encoding through Media Foundation is not in yet: linked the plain way, a missing `mfplat.dll` (Windows "N" editions) would stop every FFmpeg library from loading, so it waits until it can be added without that.
+Not included: anything under the GPL — which rules out x264 and x265 — network protocols, and capture devices.
+
+FFmpeg opens Media Foundation's `mfplat.dll` when one of its encoders is used rather than linking it. A Windows "N" edition without the Media Feature Pack has no `mfplat.dll`; there only those encoders are missing, where a linked library would stop every FFmpeg library from loading. `check.sh` fails any build that links it.
 
 The programs share one copy of the libraries rather than carrying one each, which keeps a download around half the size.
 
@@ -34,5 +37,5 @@ The archives are LGPL-2.1-or-later (FFmpeg, LAME), with Opus, dav1d and libvpx u
 1. Change `versions.env`: a new source version, or `BUILD_REVISION` for a change to the build itself.
 2. Push a tag `<ffmpeg version>-ntr<revision>`, for example `9.0.1-ntr1`.
 3. The workflow builds and checks both targets and opens a **draft** release with the archives, the sources and `SHA256SUMS`.
-4. Try the Windows archive on Windows and the VideoToolbox encoders on a real Mac, then publish the draft. A published release is immutable.
+4. Try the Windows archive on Windows, its Media Foundation encoders included, and the VideoToolbox encoders on a real Mac, then publish the draft. A published release is immutable.
 5. Update the checksums NTranscript pins for FFmpeg.

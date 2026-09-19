@@ -4,8 +4,8 @@
 # LGPL, and -- where the build machine can run it -- it actually does the jobs
 # it is for.
 #
-#   ./check.sh windows-x86_64   # linkage only; the programs are exercised on
-#                               # Windows itself before a release
+#   ./check.sh windows-x86_64   # linkage and encoders; the programs are
+#                               # exercised on Windows itself before a release
 #   ./check.sh macos-arm64      # linkage, signatures, licence, real work
 #
 # Output is captured before it is searched rather than piped into `grep -q`:
@@ -60,6 +60,16 @@ case "$TARGET" in
       [ -z "$unexpected" ] || note_problem "$(basename "$file")" "$(echo $unexpected)"
     done
     [ -z "$problems" ] || fail "dependencies that would have to ship beside the programs:"$'\n'"$problems"
+
+    # The programs cannot run here, so whether Media Foundation's encoders
+    # made it in is read from avcodec's own strings: an encoder carries its
+    # name. That they load mfplat.dll rather than link it is the import
+    # check above, which has no mfplat.dll in its list.
+    names="$(x86_64-w64-mingw32-strings -n 6 "$CHECK"/avcodec-*.dll)"
+    for encoder in h264_mf hevc_mf; do
+      grep -qx -- "$encoder" <<< "$names" || note_problem "encoder $encoder" "missing"
+    done
+    [ -z "$problems" ] || fail "components missing from the build:"$'\n'"$problems"
     ;;
 
   macos-arm64)

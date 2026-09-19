@@ -23,7 +23,7 @@ cat > RELEASE_NOTES.md <<EOF
 FFmpeg $FFMPEG_VERSION for NTranscript: \`ffmpeg\`, \`ffprobe\` and the shared libraries they use, for Windows x64 and for macOS on Apple Silicon.
 
 - Every decoder FFmpeg has, plus dav1d for AV1.
-- Every encoder FFmpeg has, plus MP3 (LAME), Opus, and VP8/VP9 (libvpx). On macOS also H.264 and HEVC through VideoToolbox.
+- Every encoder FFmpeg has, plus MP3 (LAME), Opus, and VP8/VP9 (libvpx). H.264 and HEVC through each system's own encoders: Media Foundation on Windows, VideoToolbox on macOS.
 - Every demuxer, muxer, parser, bitstream filter and filter, with scaling.
 - Not included: anything under the GPL (so no x264 or x265), network protocols, capture devices.
 
